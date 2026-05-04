@@ -35,9 +35,6 @@ services:
       timeout: 30s
       retries: 30
       start_period: 10s
-    depends_on:
-      posthog-setup:
-        condition: service_completed_successfully
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./posthog/docker/postgres-init-scripts:/docker-entrypoint-initdb.d
@@ -116,35 +113,6 @@ services:
         condition: service_healthy
     logging: *default-logging
 
-  posthog-setup:
-    image: alpine/git
-    working_dir: /workspace
-    volumes:
-      - .:/workspace
-    command:
-      - sh
-      - -c
-      - |
-        set -e
-        if [ -d posthog/.git ]; then
-          cd posthog
-          git fetch --depth=1 origin master
-          git reset --hard origin/master
-        else
-          rm -rf posthog
-          git clone --filter=blob:none --sparse --depth=1 --branch master \
-            https://github.com/PostHog/posthog posthog
-          cd posthog
-          git sparse-checkout set \
-            docker/clickhouse \
-            docker/livestream \
-            docker/postgres-init-scripts \
-            posthog/idl \
-            posthog/user_scripts
-        fi
-    restart: "no"
-    logging: *default-logging
-
   clickhouse:
     image: ${CLICKHOUSE_SERVER_IMAGE:-clickhouse/clickhouse-server:26.3.9.8}
     restart: on-failure
@@ -156,20 +124,26 @@ services:
       interval: 3s
       timeout: 10s
       retries: 10
+    entrypoint:
+      - bash
+      - -c
+      - |
+        set -e
+        BASE="https://raw.githubusercontent.com/PostHog/posthog/master/docker/clickhouse"
+        wget -qO /etc/clickhouse-server/config.xml "$BASE/config.xml"
+        mkdir -p /etc/clickhouse-server/config.d
+        wget -qO /etc/clickhouse-server/config.d/default.xml "$BASE/config.d/default.xml"
+        wget -qO /etc/clickhouse-server/users.xml "$BASE/users.xml"
+        wget -qO /etc/clickhouse-server/user_defined_function.xml "$BASE/user_defined_function.xml"
+        exec /entrypoint.sh
     depends_on:
       kafka:
         condition: service_started
       zookeeper:
         condition: service_started
-      posthog-setup:
-        condition: service_completed_successfully
     volumes:
       - ./posthog/posthog/idl:/idl
       - ./posthog/docker/clickhouse/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
-      - ./posthog/docker/clickhouse/config.xml:/etc/clickhouse-server/config.xml
-      - ./posthog/docker/clickhouse/config.d/default.xml:/etc/clickhouse-server/config.d/default.xml
-      - ./posthog/docker/clickhouse/users.xml:/etc/clickhouse-server/users.xml
-      - ./posthog/docker/clickhouse/user_defined_function.xml:/etc/clickhouse-server/user_defined_function.xml
       - ./posthog/posthog/user_scripts:/var/lib/clickhouse/user_scripts
       - clickhouse-data:/var/lib/clickhouse
     logging: *default-logging
@@ -620,12 +594,10 @@ services:
     environment:
       LIVESTREAM_JWT_SECRET: "${POSTHOG_SECRET}"
     volumes:
-      - ./posthog/docker/livestream/configs-hobby.yml:/configs/configs.yml
+      - ./configs/livestream/configs-hobby.yml:/configs/configs.yml
     depends_on:
       kafka:
         condition: service_started
-      posthog-setup:
-        condition: service_completed_successfully
     logging: *default-logging
 
   # ─── Proxy interne (Caddy) ─────────────────────────────────────────────────
