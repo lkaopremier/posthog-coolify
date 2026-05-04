@@ -35,6 +35,9 @@ services:
       timeout: 30s
       retries: 30
       start_period: 10s
+    depends_on:
+      posthog-setup:
+        condition: service_completed_successfully
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./posthog/docker/postgres-init-scripts:/docker-entrypoint-initdb.d
@@ -113,6 +116,35 @@ services:
         condition: service_healthy
     logging: *default-logging
 
+  posthog-setup:
+    image: alpine/git
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ -d posthog/.git ]; then
+          cd posthog
+          git fetch --depth=1 origin master
+          git reset --hard origin/master
+        else
+          rm -rf posthog
+          git clone --filter=blob:none --sparse --depth=1 --branch master \
+            https://github.com/PostHog/posthog posthog
+          cd posthog
+          git sparse-checkout set \
+            docker/clickhouse \
+            docker/livestream \
+            docker/postgres-init-scripts \
+            posthog/idl \
+            posthog/user_scripts
+        fi
+    restart: "no"
+    logging: *default-logging
+
   clickhouse:
     image: ${CLICKHOUSE_SERVER_IMAGE:-clickhouse/clickhouse-server:26.3.9.8}
     restart: on-failure
@@ -125,8 +157,12 @@ services:
       timeout: 10s
       retries: 10
     depends_on:
-      - kafka
-      - zookeeper
+      kafka:
+        condition: service_started
+      zookeeper:
+        condition: service_started
+      posthog-setup:
+        condition: service_completed_successfully
     volumes:
       - ./posthog/posthog/idl:/idl
       - ./posthog/docker/clickhouse/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
@@ -588,6 +624,8 @@ services:
     depends_on:
       kafka:
         condition: service_started
+      posthog-setup:
+        condition: service_completed_successfully
     logging: *default-logging
 
   # ─── Proxy interne (Caddy) ─────────────────────────────────────────────────
