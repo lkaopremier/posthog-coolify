@@ -18,6 +18,10 @@ if [ -d "$TARGET_DIR/.git" ]; then
     git reset --hard "origin/$BRANCH"
     cd ..
 else
+    if [ -e "$TARGET_DIR" ]; then
+        echo "    Répertoire $TARGET_DIR existant sans .git détecté (artefact Docker) — nettoyage..."
+        rm -rf "$TARGET_DIR"
+    fi
     echo "    Sparse-clone du repo PostHog (configs uniquement)..."
     git clone \
         --filter=blob:none \
