@@ -1,0 +1,14 @@
+# Fichiers de configuration téléchargés par setup.sh
+posthog/
+
+# Secrets locaux
+.env
+*.env.local
+
+# Fichiers Claude Code
+.claude/
+CLAUDE.md
+
+# OS
+.DS_Store
+Thumbs.db
