@@ -407,10 +407,15 @@ services:
       SESSION_RECORDING_API_REDIS_HOST: redis7
       SESSION_RECORDING_API_REDIS_PORT: 6379
       ENCRYPTION_SALT_KEYS: "${ENCRYPTION_SALT_KEYS}"
+      OBJECT_STORAGE_ENDPOINT: "http://objectstorage:19000"
+      OBJECT_STORAGE_ACCESS_KEY_ID: "object_storage_root_user"
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "object_storage_root_password"
+      OBJECT_STORAGE_BUCKET: "posthog"
     depends_on:
       - db
       - redis7
       - clickhouse
+      - objectstorage
     logging: *default-logging
 
   ingestion-error-tracking:
@@ -585,26 +590,49 @@ services:
           admin off
         }
         http://0.0.0.0:80 {
-          @replay-capture  { path /s /s/ /s/* }
-          @capture-ai      { path /i/v0/ai /i/v0/ai/ /i/v0/ai/* }
-          @capture         { path /e /e/ /e/* /i/v0 /i/v0/ /i/v0/* /batch /batch/ /batch/* /capture /capture/ /capture/* }
-          @flags           { path /flags /flags/ /flags/* }
-          @surveys         { path /surveys /surveys/ /api/surveys /api/surveys/ }
-          @remote-config   { path /array/* }
-          @webhooks        { path /public/webhooks /public/webhooks/* /public/m/ /public/m/* }
-          @livestream      { path /livestream /livestream/ /livestream/* }
-          @objectstorage   { path /posthog /posthog/ /posthog/* }
+          @replay-capture  path /s /s/ /s/*
+          @capture-ai      path /i/v0/ai /i/v0/ai/ /i/v0/ai/*
+          @capture         path /e /e/ /e/* /i/v0 /i/v0/ /i/v0/* /batch /batch/ /batch/* /capture /capture/ /capture/*
+          @flags           path /flags /flags/ /flags/*
+          @surveys         path /surveys /surveys/ /api/surveys /api/surveys/
+          @remote-config   path /array/*
+          @webhooks        path /public/webhooks /public/webhooks/* /public/m/ /public/m/*
+          @livestream      path /livestream /livestream/ /livestream/*
+          @objectstorage   path /posthog /posthog/ /posthog/*
 
-          handle @livestream     { uri strip_prefix /livestream; reverse_proxy livestream:8080 { flush_interval -1 } }
-          handle @capture-ai     { reverse_proxy capture-ai:3000 }
-          handle @capture        { reverse_proxy capture:3000 }
-          handle @replay-capture { reverse_proxy replay-capture:3000 }
-          handle @flags          { reverse_proxy feature-flags:3001 }
-          handle @surveys        { reverse_proxy hypercache-server:3002 }
-          handle @remote-config  { reverse_proxy hypercache-server:3002 }
-          handle @webhooks       { reverse_proxy plugins:6738 }
-          handle @objectstorage  { reverse_proxy objectstorage:19000 }
-          handle                 { reverse_proxy web:8000 }
+          handle @livestream {
+            uri strip_prefix /livestream
+            reverse_proxy livestream:8080 {
+              flush_interval -1
+            }
+          }
+          handle @capture-ai {
+            reverse_proxy capture-ai:3000
+          }
+          handle @capture {
+            reverse_proxy capture:3000
+          }
+          handle @replay-capture {
+            reverse_proxy replay-capture:3000
+          }
+          handle @flags {
+            reverse_proxy feature-flags:3001
+          }
+          handle @surveys {
+            reverse_proxy hypercache-server:3002
+          }
+          handle @remote-config {
+            reverse_proxy hypercache-server:3002
+          }
+          handle @webhooks {
+            reverse_proxy plugins:6738
+          }
+          handle @objectstorage {
+            reverse_proxy objectstorage:19000
+          }
+          handle {
+            reverse_proxy web:8000
+          }
         }
     depends_on:
       - web
