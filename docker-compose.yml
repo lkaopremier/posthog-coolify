@@ -130,11 +130,11 @@ services:
       - |
         set -e
         BASE="https://raw.githubusercontent.com/PostHog/posthog/master/docker/clickhouse"
-        wget -qO /etc/clickhouse-server/config.xml "$BASE/config.xml"
+        wget -qO /etc/clickhouse-server/config.xml "$$BASE/config.xml"
         mkdir -p /etc/clickhouse-server/config.d
-        wget -qO /etc/clickhouse-server/config.d/default.xml "$BASE/config.d/default.xml"
-        wget -qO /etc/clickhouse-server/users.xml "$BASE/users.xml"
-        wget -qO /etc/clickhouse-server/user_defined_function.xml "$BASE/user_defined_function.xml"
+        wget -qO /etc/clickhouse-server/config.d/default.xml "$$BASE/config.d/default.xml"
+        wget -qO /etc/clickhouse-server/users.xml "$$BASE/users.xml"
+        wget -qO /etc/clickhouse-server/user_defined_function.xml "$$BASE/user_defined_function.xml"
         exec /entrypoint.sh
     depends_on:
       kafka:
@@ -160,33 +160,6 @@ services:
     command: -c 'mkdir -p /data/posthog /data/ducklake-dev /data/ai-blobs && minio server --address ":19000" --console-address ":19001" /data'
     volumes:
       - objectstorage:/data
-    logging: *default-logging
-
-  seaweedfs:
-    image: chrislusf/seaweedfs:4.03
-    restart: on-failure
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        /usr/bin/weed "$$@" &
-        WEED_PID=$$!
-        while true; do
-          sleep 5
-          if echo "s3.bucket.list" | /usr/bin/weed shell -master=localhost:9333 2>&1 | grep -q "posthog"; then break; fi
-          echo "s3.bucket.create -name posthog" | /usr/bin/weed shell -master=localhost:9333 2>&1 || true
-        done
-        wait $$WEED_PID
-      - --
-    command: ["server", "-s3", "-s3.port=8333", "-dir=/data"]
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9333/cluster/status"]
-      interval: 5s
-      timeout: 10s
-      retries: 12
-      start_period: 20s
-    volumes:
-      - seaweedfs:/data
     logging: *default-logging
 
   # ─── Services Rust (capture, feature-flags, personhog…) ──────────────────
@@ -315,9 +288,9 @@ services:
     environment:
       KAFKA_HOSTS: "kafka:9092"
       OBJECT_STORAGE_BUCKET: posthog
-      OBJECT_STORAGE_ACCESS_KEY_ID: "any"
-      OBJECT_STORAGE_SECRET_ACCESS_KEY: "any"
-      OBJECT_STORAGE_ENDPOINT: "http://seaweedfs:8333"
+      OBJECT_STORAGE_ACCESS_KEY_ID: "object_storage_root_user"
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "object_storage_root_password"
+      OBJECT_STORAGE_ENDPOINT: "http://objectstorage:19000"
       OBJECT_STORAGE_FORCE_PATH_STYLE: "true"
       BIND_HOST: "0.0.0.0"
       BIND_PORT: "3302"
@@ -329,8 +302,8 @@ services:
     depends_on:
       kafka-init:
         condition: service_completed_successfully
-      seaweedfs:
-        condition: service_healthy
+      objectstorage:
+        condition: service_started
       db:
         condition: service_healthy
       redis7:
@@ -370,7 +343,6 @@ services:
       - clickhouse
       - kafka
       - objectstorage
-      - seaweedfs
     logging: *default-logging
 
   ingestion-general:
@@ -408,16 +380,16 @@ services:
       DATABASE_URL: "postgres://posthog:posthog@db:5432/posthog"
       KAFKA_HOSTS: "kafka:9092"
       REDIS_URL: "redis://redis7:6379/"
-      SESSION_RECORDING_V2_S3_ACCESS_KEY_ID: "any"
-      SESSION_RECORDING_V2_S3_SECRET_ACCESS_KEY: "any"
+      SESSION_RECORDING_V2_S3_ACCESS_KEY_ID: "object_storage_root_user"
+      SESSION_RECORDING_V2_S3_SECRET_ACCESS_KEY: "object_storage_root_password"
       SESSION_RECORDING_V2_S3_TIMEOUT_MS: 120000
-      SESSION_RECORDING_V2_S3_ENDPOINT: "http://seaweedfs:8333"
+      SESSION_RECORDING_V2_S3_ENDPOINT: "http://objectstorage:19000"
       ENCRYPTION_SALT_KEYS: "${ENCRYPTION_SALT_KEYS}"
     depends_on:
       - db
       - redis7
       - kafka
-      - seaweedfs
+      - objectstorage
     logging: *default-logging
 
   recording-api:
@@ -515,10 +487,10 @@ services:
       OBJECT_STORAGE_SECRET_ACCESS_KEY: "object_storage_root_password"
       OBJECT_STORAGE_ENDPOINT: "http://objectstorage:19000"
       OBJECT_STORAGE_PUBLIC_ENDPOINT: "https://${DOMAIN}"
-      SESSION_RECORDING_V2_S3_ACCESS_KEY_ID: "any"
-      SESSION_RECORDING_V2_S3_SECRET_ACCESS_KEY: "any"
+      SESSION_RECORDING_V2_S3_ACCESS_KEY_ID: "object_storage_root_user"
+      SESSION_RECORDING_V2_S3_SECRET_ACCESS_KEY: "object_storage_root_password"
       OBJECT_STORAGE_ENABLED: "true"
-      SESSION_RECORDING_V2_S3_ENDPOINT: "http://seaweedfs:8333"
+      SESSION_RECORDING_V2_S3_ENDPOINT: "http://objectstorage:19000"
       RECORDING_API_URL: "http://recording-api:6738"
       ENCRYPTION_SALT_KEYS: "${ENCRYPTION_SALT_KEYS}"
       CDP_API_URL: "http://plugins:6738"
@@ -535,7 +507,6 @@ services:
       - clickhouse
       - kafka
       - objectstorage
-      - seaweedfs
       - personhog-router
     logging: *default-logging
 
@@ -560,9 +531,9 @@ services:
       OBJECT_STORAGE_SECRET_ACCESS_KEY: "object_storage_root_password"
       OBJECT_STORAGE_ENDPOINT: "http://objectstorage:19000"
       OBJECT_STORAGE_PUBLIC_ENDPOINT: "https://${DOMAIN}"
-      SESSION_RECORDING_V2_S3_ENDPOINT: "http://seaweedfs:8333"
-      SESSION_RECORDING_V2_S3_ACCESS_KEY_ID: "any"
-      SESSION_RECORDING_V2_S3_SECRET_ACCESS_KEY: "any"
+      SESSION_RECORDING_V2_S3_ENDPOINT: "http://objectstorage:19000"
+      SESSION_RECORDING_V2_S3_ACCESS_KEY_ID: "object_storage_root_user"
+      SESSION_RECORDING_V2_S3_SECRET_ACCESS_KEY: "object_storage_root_password"
       OBJECT_STORAGE_ENABLED: "true"
       RECORDING_API_URL: "http://recording-api:6738"
       ENCRYPTION_SALT_KEYS: "${ENCRYPTION_SALT_KEYS}"
@@ -646,7 +617,6 @@ volumes:
   clickhouse-data:
   kafka-data:
   objectstorage:
-  seaweedfs:
   zookeeper-data:
   zookeeper-datalog:
   zookeeper-logs:
