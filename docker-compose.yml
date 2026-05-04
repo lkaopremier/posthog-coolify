@@ -583,7 +583,7 @@ services:
     image: caddy:2
     restart: always
     entrypoint: sh
-    command: -c 'echo "$$CADDYFILE" > /etc/caddy/Caddyfile && exec caddy run -c /etc/caddy/Caddyfile'
+    command: -c 'printf "%s" "$$CADDYFILE" > /etc/caddy/Caddyfile && exec caddy run -c /etc/caddy/Caddyfile'
     environment:
       CADDYFILE: |
         {
