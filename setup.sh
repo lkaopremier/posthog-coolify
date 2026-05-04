@@ -37,8 +37,7 @@ else
         docker/livestream \
         docker/postgres-init-scripts \
         posthog/idl \
-        posthog/user_scripts \
-        dev-services.env
+        posthog/user_scripts
     cd ..
 fi
 

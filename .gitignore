@@ -1,6 +1,9 @@
 # Fichiers de configuration téléchargés par setup.sh
 posthog/
 
+# Base de données GeoIP (téléchargée localement, non commitée)
+share/
+
 # Secrets locaux
 .env
 *.env.local

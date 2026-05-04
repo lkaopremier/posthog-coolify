@@ -234,6 +234,9 @@ services:
       RUST_LOG: "info"
       COOKIELESS_REDIS_HOST: redis7
       COOKIELESS_REDIS_PORT: 6379
+      MAXMIND_DB_PATH: "/share/GeoLite2-City.mmdb"
+    volumes:
+      - ./share:/share
     depends_on:
       - db
       - redis7
